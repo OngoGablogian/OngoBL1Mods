@@ -1,0 +1,14 @@
+[project]
+name = "SellLookedAtItem"
+version = "1.0.0"
+authors = [{ name = "Ongo" }, { name = "Pyrex" }]
+description = """Adds a Keybind to sell the item you're looking at on the ground, without picking it up. Extracted from Bonk Utilities by Pyrex.
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "Sell Looked At Item"
+license = {name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Sell%20Looked%20At%20Item/SellLookedAtItem.sdkmod"
+version = "1.0.0"

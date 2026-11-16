@@ -1,0 +1,15 @@
+[project]
+name = "DoubleJumpDash"
+version = "1.0.0"
+authors = [{ name = "Ongo" }]
+description = """Adds double jumping and dashing mid-air. Ported from ZetaDaemon's Borderlands 2 mod "Movement Tech" and juso's Borderlands 2 mod "BL2 Eternal".
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "Double Jump Dash"
+license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+coop_support = "RequiresAllPlayers"
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Double%20Jump%20Dash/DoubleJumpDash.sdkmod"
+version = "1.0.0"

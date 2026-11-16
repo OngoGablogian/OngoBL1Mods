@@ -1,0 +1,14 @@
+[project]
+name = "FastTravelAnywhere"
+version = "1.0.0"
+authors = [{ name = "Ongo" }, { name = "Pyrex" }]
+description = """Adds a keybind that opens the Fast Travel / Respec menu from anywhere. Extracted from Bonk Utilities by Pyrex.
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "Fast Travel Anywhere"
+license = {name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Fast%20Travel%20Anywhere/FastTravelAnywhere.sdkmod"
+version = "1.0.0"

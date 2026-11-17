@@ -54,4 +54,3 @@ Eridian weapons use the slider for their base type (an Eridian SMG follows the S
 | Log Weapon Sounds | Off | Debug: records which sounds weapons play |
 | Debug: Print Full Report | - | Debug: prints a report to the console, which also saves it to `unrealsdk.log` |
 | Reset All To 100% | - | Sets the master, per-type, grenade and shock sliders back to 100 |
-

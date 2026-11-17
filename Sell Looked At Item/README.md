@@ -27,9 +27,9 @@ A **Borderlands GOTY / GOTY Enhanced** mod for the [willow1-mod-manager](https:/
 - In game, look at a dropped item until its item card appears.
 - Press your assigned key to sell it.
 
-This keybind was taken from **Bonk Utilities**. If you also run Bonk Utilities, unbind its *Sell Looked At Item* key (or disable that mod) so that both mods don't fire on the same press.
+## Compatibility note
+
+- This keybind was taken from **Bonk Utilities**. If you also run Bonk Utilities, unbind its *Sell Looked At Item* key (or disable that mod) so that both mods don't fire on the same press.
 
 ## Credits
-
 - **Pyrex** for the original feature in [Bonk Utilities](https://github.com/PyrexBLJ/BL1-SDK-Mods/tree/main/BonkUtilities).
-

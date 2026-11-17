@@ -1,6 +1,6 @@
 # Double Jump Dash
 
-A [willow1-mod-manager](https://github.com/bl-sdk/willow1-mod-manager) mod for **Borderlands GOTY** and **Borderlands GOTY Enhanced** that lets you double jump and dash in mid-air.
+A **Borderlands GOTY / GOTY Enhanced** mod for the [willow1-mod-manager](https://github.com/bl-sdk/willow1-mod-manager) that lets you double jump and dash in mid-air.
 
 This combines ports of two Borderlands 2 mods: the double jump feature from ZetaDaemon's [Movement Tech](https://github.com/ZetaDaemon/willow2-sdk-mods/tree/main/movement_tech), and the air dash feature from juso's [BL2 Eternal](https://github.com/juso40/bl2sdk-mods/tree/main/bl2eternal).
 

@@ -25,13 +25,11 @@ A **Borderlands GOTY / GOTY Enhanced** mod for the [willow1-mod-manager](https:/
 
 ## Usage
 
-When you're in the game, press your bound key to open the Fast Travel / Respec menu.
+- When you're in the game, press your bound key to open the Fast Travel / Respec menu.
 
 ## Compatibility note
 
-This keybind was taken from **Bonk Utilities**. If you also run Bonk Utilities, unbind its *Open Fast Travel Menu/Respec* key (or disable that mod) so the menu isn't opened twice by the same key.
+- This keybind was taken from **Bonk Utilities**. If you also run Bonk Utilities, unbind its *Open Fast Travel Menu/Respec* key (or disable that mod) so the menu isn't opened twice by the same key.
 
 ## Credits
-
 - **Pyrex** for the original feature in [Bonk Utilities](https://github.com/PyrexBLJ/BL1-SDK-Mods/tree/main/BonkUtilities).
-

@@ -1,5 +1,5 @@
 import re
-from pathlib import Path
+import time
 from typing import Any
 
 import unrealsdk
@@ -16,8 +16,8 @@ from unrealsdk import logging
 from unrealsdk.hooks import Type, add_hook, remove_hook
 from unrealsdk.unreal import BoundFunction, UObject, WrappedStruct
 
-__version_info__: tuple[int, int, int] = (1, 0, 0)
-__version__: str = "1.0.0"
+__version_info__: tuple[int, int, int] = (1, 0, 1)
+__version__: str = "1.0.1"
 __author__: str = "Ongo"
 
 
@@ -25,8 +25,8 @@ def log(msg: str) -> None:
     logging.info(f"[Weapon Volume BL1E] {msg}")
 
 
-# Everything the debug features find is kept in this buffer, so the whole thing can be copied to the
-# clipboard / saved to a file in one go (the in-game console can't scroll or copy).
+# Everything the debug features find is kept in this buffer, so the whole thing can be printed to the
+# console (and so into `unrealsdk.log`) in one go.
 report: list[str] = []
 
 
@@ -76,6 +76,11 @@ opt_grenade = _slider(
     "Grenades",
     100,
     "Volume of grenade bounce and explosion sounds. Not affected by the master slider.",
+)
+opt_shock = _slider(
+    "Shock Effects",
+    100,
+    "Volume of shock explosion and electrocution sounds. Does not change the firing zap of some shock weapons. Not affected by the master slider.",
 )
 
 opt_own_only = BoolOption(
@@ -245,31 +250,83 @@ def resolve_weapon(obj: UObject) -> tuple[UObject | None, bool]:
 # --------------------------------------------------------------------------------------------------
 
 
+# Words which mark a sound cue as being the shock (electric) effect
+SHOCK_WORDS: tuple[str, ...] = (
+    "shock", "electr", "zap", "tesla", "lightning", "_emp_", "_emp.", ".emp_", "elec_",
+)
+# Sounds from these packages may be shock effects. Weapons, impacts and elemental effects only,
+# so that ambient scenery (e.g. electric fences) is left alone
+SHOCK_PACKAGES: tuple[str, ...] = ("wep_", "efx_", "elemental", "weapon", "gore_")
+
+
 def is_grenade_cue(cue_lower: str) -> bool:
     return cue_lower.startswith("wep_grenade")
 
 
-def scale_grenade_cue(cue: UObject, cue_path: str) -> None:
-    """Applies the grenade slider to a grenade sound cue, relative to its original volume."""
+def is_shock_cue(cue_lower: str) -> bool:
+    if not any(word in cue_lower for word in SHOCK_WORDS):
+        return False
+    return any(pkg in cue_lower for pkg in SHOCK_PACKAGES)
+
+
+def effect_for_cue(cue_lower: str) -> tuple[str, SliderOption] | None:
+    """Returns the label and slider for sounds which have a slider of their own, if this is one."""
+    if is_grenade_cue(cue_lower):
+        return "grenade", opt_grenade
+    if is_shock_cue(cue_lower):
+        return "shock", opt_shock
+    return None
+
+
+def scale_effect_cue(cue: UObject, cue_path: str, label: str, option: SliderOption) -> None:
+    """Applies an effect's slider to its sound cue, relative to the cue's original volume."""
     if cue_path not in original_volumes:
         original_volumes[cue_path] = cue.VolumeMultiplier
-    scale = opt_grenade.value / 100
+    scale = option.value / 100
     cue.VolumeMultiplier = original_volumes[cue_path] * scale
-    if ("grenade", cue_path) not in applied_logged and len(applied_logged) < 200:
-        applied_logged.add(("grenade", cue_path))
-        note(f"scaling grenade sound {cue_path} by {scale:.2f}", to_console=True)
+    if (label, cue_path) not in applied_logged and len(applied_logged) < 200:
+        applied_logged.add((label, cue_path))
+        note(f"scaling {label} sound {cue_path} by {scale:.2f}", to_console=True)
 
 
-def scale_grenade_component(component: UObject) -> None:
+last_shock_scan = 0.0
+
+
+def scale_all_shock_cues(force: bool = False) -> None:
+    """
+    Scales every loaded shock cue up front.
+
+    Some shock sounds are started by the engine itself (e.g. from particle effects) and never go
+    through the script functions we hook, so we also set their volume ahead of time. New cues are
+    picked up by rescanning at most every few seconds.
+    """
+    global last_shock_scan  # noqa: PLW0603
+    now = time.monotonic()
+    if not force and now - last_shock_scan < 5:
+        return
+    last_shock_scan = now
     try:
+        for cue in unrealsdk.find_all("SoundCue", exact=False):
+            cue_path = cue._path_name()
+            cue_lower = cue_path.lower()
+            if is_shock_cue(cue_lower) and not is_grenade_cue(cue_lower):
+                scale_effect_cue(cue, cue_path, "shock", opt_shock)
+    except Exception as ex:  # noqa: BLE001
+        log_error_once("scale_all_shock_cues", ex)
+
+
+def scale_effect_component(component: UObject) -> None:
+    try:
+        scale_all_shock_cues()
         cue = component.SoundCue
         if cue is None:
             return
         cue_path = cue._path_name()
-        if is_grenade_cue(cue_path.lower()):
-            scale_grenade_cue(cue, cue_path)
+        effect = effect_for_cue(cue_path.lower())
+        if effect is not None:
+            scale_effect_cue(cue, cue_path, *effect)
     except Exception as ex:  # noqa: BLE001
-        log_error_once("scale_grenade_component", ex)
+        log_error_once("scale_effect_component", ex)
 
 
 @mods_hook("Engine.AudioComponent:Play")
@@ -279,7 +336,7 @@ def audio_component_play(
     _ret: Any,
     _func: BoundFunction,
 ) -> None:
-    scale_grenade_component(obj)
+    scale_effect_component(obj)
 
 
 @mods_hook("Engine.AudioComponent:FadeIn")
@@ -289,7 +346,7 @@ def audio_component_fade_in(
     _ret: Any,
     _func: BoundFunction,
 ) -> None:
-    scale_grenade_component(obj)
+    scale_effect_component(obj)
 
 
 @mods_hook("Engine.Actor:PlaySound")
@@ -300,14 +357,16 @@ def play_sound(
     _func: BoundFunction,
 ) -> None:
     try:
+        scale_all_shock_cues()
         cue = args.InSoundCue
         if cue is None:
             return
 
         cue_path = cue._path_name()
         cue_lower = cue_path.lower()
-        if is_grenade_cue(cue_lower):
-            scale_grenade_cue(cue, cue_path)
+        effect = effect_for_cue(cue_lower)
+        if effect is not None:
+            scale_effect_cue(cue, cue_path, *effect)
             return
 
         weapon, from_pawn = resolve_weapon(obj)
@@ -339,6 +398,39 @@ def play_sound(
         log_error_once("play_sound", ex)
 
 
+def scale_effect_args(args: WrappedStruct) -> None:
+    try:
+        scale_all_shock_cues()
+        for cue in sound_cues_in(args):
+            cue_path = cue._path_name()
+            effect = effect_for_cue(cue_path.lower())
+            if effect is not None:
+                scale_effect_cue(cue, cue_path, *effect)
+    except Exception as ex:  # noqa: BLE001
+        log_error_once("scale_effect_args", ex)
+
+
+@mods_hook("Engine.Actor:CreateAudioComponent")
+def create_audio_component(
+    _obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    scale_effect_args(args)
+
+
+@mods_hook("Engine.Weapon:WeaponPlaySound")
+def weapon_play_sound(
+    _obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    scale_effect_args(args)
+
+
+
 # --------------------------------------------------------------------------------------------------
 # Debugging aids
 # --------------------------------------------------------------------------------------------------
@@ -362,34 +454,57 @@ probe_counts: dict[str, int] = {}
 active_probes: list[str] = []
 
 
+NOISE_WORDS: tuple[str, ...] = (
+    "ui_", "user_interface", "footstep", "foley", "pickup", "vo_", "ambient", "amb_", "portal",
+    "interface", "casing", "mission", "item_interaction", "player_notifications", "music",
+)
+
+
+def sound_cues_in(args: WrappedStruct) -> list[UObject]:
+    """Finds every SoundCue passed as an argument, whatever the argument is called."""
+    cues: list[UObject] = []
+    try:
+        for field in args._type._fields():  # type: ignore[attr-defined]
+            value = getattr(args, field.Name, None)
+            if value is not None and hasattr(value, "_path_name") and value.Class.Name == "SoundCue":
+                cues.append(value)
+    except Exception:  # noqa: BLE001
+        try:
+            cue = args.InSoundCue
+            if cue is not None:
+                cues.append(cue)
+        except (AttributeError, ValueError):
+            pass
+    return cues
+
+
 def make_probe(path: str):  # noqa: ANN202
     def probe(obj: UObject, args: WrappedStruct, _ret: Any, _func: BoundFunction) -> None:
         probe_counts[path] = probe_counts.get(path, 0) + 1
-        if len(probe_seen) > 300:
+        if len(probe_seen) > 700:
             return
         try:
             holder = "-"
             weapon, _ = resolve_weapon(obj)
             if weapon is not None:
                 holder = f"{weapon.Class.Name}/{classify_weapon(weapon)}"
-            elif path in ("Engine.Actor:PlaySound", "Engine.Actor:CreateAudioComponent"):
-                return  # Not weapon related, skip the noise
 
-            cue_text = "-"
-            try:
-                cue = args.InSoundCue
-                cue_text = cue._path_name() if cue is not None else "None"
-            except (AttributeError, ValueError):
+            cue_texts = [c._path_name() for c in sound_cues_in(args)]
+            if not cue_texts:
                 try:
-                    cue_text = obj.SoundCue._path_name()
+                    cue_texts = [obj.SoundCue._path_name()]
                 except (AttributeError, ValueError):
-                    pass
+                    cue_texts = ["-"]
 
-            key = (path, obj.Class.Name, cue_text)
-            if key in probe_seen:
-                return
-            probe_seen.add(key)
-            note(f"probe {path} on {obj.Class.Name} (weapon: {holder}) sound: {cue_text}")
+            for cue_text in cue_texts:
+                lowered = cue_text.lower()
+                if any(word in lowered for word in NOISE_WORDS):
+                    continue
+                key = (path, obj.Class.Name, cue_text)
+                if key in probe_seen:
+                    continue
+                probe_seen.add(key)
+                note(f"probe {path} on {obj.Class.Name} (weapon: {holder}) sound: {cue_text}")
         except Exception as ex:  # noqa: BLE001
             log_error_once(f"probe {path}", ex)
 
@@ -411,7 +526,7 @@ def set_probes(enabled: bool) -> None:
             note(f"could not probe {path}: {ex}")
     log(
         f"debug logging on - watching {len(active_probes)} functions. Fire some weapons, then press"
-        f" 'Debug: Copy Full Report'.",
+        f" 'Debug: Print Full Report'.",
     )
 
 
@@ -422,9 +537,10 @@ opt_debug = BoolOption(
     "No",
     description=(
         "Debug: records which functions/sounds are used when weapons make noise. Turn on, fire a"
-        " few different weapons, then press 'Debug: Copy Full Report'."
+        " few different weapons, then press 'Debug: Print Full Report'. The report goes to the"
+        " console and unrealsdk.log."
     ),
-    on_change=lambda _opt, value: set_probes(value),
+    on_change_while_enabled=lambda _opt, value: set_probes(value),
 )
 
 SOUNDISH = re.compile(r"sound|audio|snd|fmod|fire|shot|sfx|noise|volume", re.IGNORECASE)
@@ -520,45 +636,19 @@ def build_report() -> None:
         note(f"held weapon dump failed: {type(ex).__name__}: {ex}")
 
 
-def report_path() -> Path | None:
-    for base in (Path.home() / "Documents", Path.home()):
-        if base.is_dir():
-            return base / "WeaponVolumeBL1E_report.txt"
-    return None
-
-
-def copy_full_report(_: ButtonOption) -> None:
+def print_full_report(_: ButtonOption) -> None:
+    """Prints everything gathered so far to the console, which also writes it to unrealsdk.log."""
     try:
         report.append("")  # Separate from any older run
         build_report()
-        text = "\n".join(report)
-
-        copied = False
-        try:
-            from ui_utils import clipboard_copy  # noqa: PLC0415
-
-            clipboard_copy(text)
-            copied = True
-        except Exception as ex:  # noqa: BLE001
-            log(f"could not use the clipboard: {ex}")
-
-        saved_to = ""
-        path = report_path()
-        if path is not None:
-            try:
-                path.write_text(text, encoding="utf-8")
-                saved_to = str(path)
-            except OSError as ex:
-                log(f"could not save the report: {ex}")
-
-        log(
-            f"report ready ({len(report)} lines). "
-            f"{'Copied to clipboard. ' if copied else ''}"
-            f"{'Saved to ' + saved_to if saved_to else ''}",
-        )
+        lines = list(report)
         report.clear()
+
+        for line in lines:
+            log(line)
+        log(f"---- end of report ({len(lines)} lines) - see unrealsdk.log ----")
     except Exception as ex:  # noqa: BLE001
-        log_error_once("copy_full_report", ex)
+        log_error_once("print_full_report", ex)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -578,6 +668,7 @@ def restore_stock_volumes() -> None:
 def on_enable() -> None:
     log(f"v{__version__} loaded for {Game.get_current().name}")
     set_probes(opt_debug.value)
+    scale_all_shock_cues(force=True)
 
 
 def on_disable() -> None:
@@ -586,7 +677,7 @@ def on_disable() -> None:
 
 
 def reset_sliders(_: ButtonOption) -> None:
-    for option in (opt_master, opt_grenade, *TYPE_OPTIONS.values()):
+    for option in (opt_master, opt_grenade, opt_shock, *TYPE_OPTIONS.values()):
         option.value = 100
 
 
@@ -603,10 +694,11 @@ mod = build_mod(
         opt_sniper,
         opt_launcher,
         opt_grenade,
+        opt_shock,
         opt_own_only,
         opt_handling,
         opt_debug,
-        ButtonOption("Debug: Copy Full Report", on_press=copy_full_report),
+        ButtonOption("Debug: Print Full Report", on_press=print_full_report),
         ButtonOption("Reset All To 100%", on_press=reset_sliders),
     ],
     supported_games=Game.BL1E,

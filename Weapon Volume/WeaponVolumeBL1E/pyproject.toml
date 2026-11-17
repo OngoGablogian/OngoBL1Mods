@@ -1,6 +1,6 @@
 [project]
 name = "WeaponVolumeBL1E"
-version = "1.0.0"
+version = "1.0.1"
 authors = [{ name = "Ongo" }]
 description = """Adjust the volume of each weapon type: pistols, SMGs, shotguns, rifles, snipers, launchers and grenades.
 
@@ -11,4 +11,4 @@ name = "Weapon Volume BL1E"
 license = {name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
 supported_games = ["BL1E"]
 download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Weapon%20Volume/WeaponVolumeBL1E.sdkmod"
-version = "1.0.0"
+version = "1.0.1"

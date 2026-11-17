@@ -14,11 +14,12 @@ Some weapons are far louder than others and the game's single "Sound Effects Vol
   - Sniper Rifles
   - Rocket Launchers
 - A **Grenades** slider for grenade bounce and explosion sounds (not affected by the master slider).
+- A **Shock Effects** slider for shock explosion and electrocution sounds, including shock barrels, shock grenade and EMP blasts, and the electrocution effect on enemies (not affected by the master slider). It does not change the firing zap of some shock weapons, such as the Hyperion Nemesis, because the game plays that sound in a way the mod can't reach.
 - A **Master Gun Volume** slider applied on top of the per-type sliders.
 - **Only My Weapons** - leave enemy and NPC weapons at their normal volume.
 - **Affect Reload / Handling Sounds** - also scale reload, equip and dry-fire sounds, not just firing sounds.
 - **Reset All To 100%** button.
-- Only affects weapon and grenade sounds - music, voices, footsteps, and other sound effects are left alone.
+- Only affects weapon, grenade and shock effect sounds - music, voices, footsteps, and other sound effects are left alone.
 
 Eridian weapons use the slider for their base type (an Eridian SMG follows the SMG slider, and so on).
 
@@ -47,9 +48,10 @@ Eridian weapons use the slider for their base type (an Eridian SMG follows the S
 | Sniper Rifles | 100 | Sniper rifles |
 | Rocket Launchers | 100 | Rocket launchers |
 | Grenades | 100 | Grenade bounce and explosion sounds (ignores the master slider) |
+| Shock Effects | 100 | Shock explosion and electrocution sounds (ignores the master slider; does not affect the firing zap of some shock weapons) |
 | Only My Weapons | Off | Leave enemy and NPC weapons at stock volume |
 | Affect Reload / Handling Sounds | Off | Also scale reload, equip and dry-fire sounds |
 | Log Weapon Sounds | Off | Debug: records which sounds weapons play |
-| Debug: Copy Full Report | - | Debug: copies a report to the clipboard and saves it to a file |
-| Reset All To 100% | - | Sets the master, per-type and grenade sliders back to 100 |
+| Debug: Print Full Report | - | Debug: prints a report to the console, which also saves it to `unrealsdk.log` |
+| Reset All To 100% | - | Sets the master, per-type, grenade and shock sliders back to 100 |
 

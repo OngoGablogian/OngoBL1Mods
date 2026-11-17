@@ -180,11 +180,20 @@ jobs:
             fi
           done < remote-assets.tsv
 
-          # Refresh title/notes and make sure it's marked Latest
+          # Refresh title/notes
           gh release edit "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_NAME" \
             --notes-file release-notes.md \
-            --draft=false \
-            --prerelease=false \
-            --latest
+            --prerelease=false
+
+          # Re-publish so the release page shows the current date.
+          # Editing a release never changes its "published" date, but publishing a
+          # draft does. The release is a draft for only a moment; assets and their
+          # download counts are untouched. (Kept as separate calls: GitHub can drop
+          # other changes made in the same call as a draft -> published switch.)
+          # (Uses the release ID, since drafts can't be looked up by tag.)
+          release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .id)
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=true --silent
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true \
+            --jq '"Published at: " + .published_at'

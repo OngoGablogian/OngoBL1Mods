@@ -96,7 +96,7 @@ _card_startup_ticks = 0
 _card_modal_hidden = False
 
 
-WORKSHOP_VERSION = "1.1.1"
+WORKSHOP_VERSION = "1.1.2"
 CARD_PREVIEW_ENABLED = True
 DEBUG_LOGGING = False
 _part_change_busy = False
@@ -2528,11 +2528,13 @@ def _duplicate_current_item() -> None:
         definition = unrealsdk.make_struct("ItemDefinitionData", **snapshot)
         _require_backpack_room()
         before = _manager_inventory_members([manager])
+        counter = _backpack_counter(manager)
         manager.ClientAddItemToBackpack(definition, 1, False, False)
         after = _manager_inventory_members([manager])
         if not after - before:
             core._notify("No new backpack item was detected. Check inventory before retrying.")
             return
+        _count_spawned_inventory(manager, counter)
         core._notify(f"Duplicated {_item_name(item)} into the backpack.")
     except Exception as exc:
         logging.warning(f"Workshop item duplication failed: {exc}")
@@ -2739,11 +2741,13 @@ def _import_item(text: str | None = None) -> None:
             raise ValueError(problems[0] + (f" (+{len(problems) - 1} more; see SDK log)" if len(problems) > 1 else ""))
         _require_backpack_room()
         before = _manager_inventory_members([manager])
+        counter = _backpack_counter(manager)
         manager.ClientAddItemToBackpack(definition, 1, False, False)
         after = _manager_inventory_members([manager])
         if not after - before:
             core._notify("No new backpack item was detected. Check inventory before retrying.")
             return
+        _count_spawned_inventory(manager, counter)
         title = changes.get("TitleItemNamePartDefinition")
         name = core._leaf(title).removeprefix("Title_") if title is not None else "gear"
         core._notify(f"Imported {name} into the backpack.")
@@ -2753,6 +2757,54 @@ def _import_item(text: str | None = None) -> None:
 
 
 _backpack_diagnostics_logged = False
+
+
+# BL1E keeps a separate backpack counter (BackpackInventoryCount) that the
+# vending machine reads and every sale decrements. ClientAddWeaponToBackpack
+# and ClientAddItemToBackpack add the object to the Backpack list without
+# raising that counter, so Workshop-made gear would push it below zero.
+def _backpack_counter(manager: UObject | None) -> int | None:
+    try:
+        return int(manager.BackpackInventoryCount)
+    except Exception:
+        return None
+
+
+def _backpack_list_size(manager: UObject | None) -> int | None:
+    try:
+        return sum(1 for inv in manager.Backpack if inv is not None)
+    except Exception:
+        return None
+
+
+def _count_spawned_inventory(manager: UObject | None, before: int | None) -> None:
+    """Count one Workshop spawn if the game's add call did not."""
+    after = _backpack_counter(manager)
+    if before is None or after is None or after != before:
+        return
+    try:
+        manager.BackpackInventoryCount = before + 1
+    except Exception as exc:
+        logging.warning(f"Pandora's Workshop could not update the backpack count: {exc}")
+
+
+def _repair_backpack_counter() -> None:
+    """Raise the counter to the real backpack size if it fell behind.
+
+    Only ever raises it, so gear kept outside the Backpack list (if any) can
+    never be uncounted by this.
+    """
+    pawn = getattr(get_pc(), "Pawn", None)
+    manager = getattr(pawn, "InvManager", None) or getattr(pawn, "InventoryManager", None)
+    counter = _backpack_counter(manager)
+    actual = _backpack_list_size(manager)
+    if counter is None or actual is None or counter >= actual:
+        return
+    try:
+        manager.BackpackInventoryCount = actual
+        logging.info(f"Pandora's Workshop corrected the backpack count from {counter} to {actual}")
+    except Exception as exc:
+        logging.warning(f"Pandora's Workshop could not correct the backpack count: {exc}")
 
 
 def _backpack_space() -> tuple[int | None, int | None]:
@@ -2777,10 +2829,11 @@ def _backpack_space() -> tuple[int | None, int | None]:
                 break
         if capacity is not None:
             break
-    used = None
-    try:
-        used = int(manager.GetUnreadiedInventoryCount())
-    except Exception:
+    # The game's own counter can lag behind (see _backpack_counter), so use
+    # whichever is larger: the counter or the Backpack list itself.
+    sizes = [n for n in (_backpack_counter(manager), _backpack_list_size(manager)) if n is not None]
+    used = max(sizes) if sizes else None
+    if used is None:
         try:
             used = sum(1 for inv in (*_inventory_weapons(), *_inventory_items()) if not getattr(inv, "bReadied", False))
         except Exception:
@@ -3024,6 +3077,7 @@ def _import_weapon(text: str | None = None) -> None:
         _require_backpack_room()
         _pending_duplicate_source = session.weapon
         _pending_duplicate_result = None
+        counter = _backpack_counter(manager)
         try:
             manager.ClientAddWeaponToBackpack(definition, False, False)
             created = _pending_duplicate_result
@@ -3032,6 +3086,7 @@ def _import_weapon(text: str | None = None) -> None:
             _pending_duplicate_result = None
         if created is None:
             raise RuntimeError("Enhanced did not expose the spawned backpack weapon")
+        _count_spawned_inventory(manager, counter)
         try:
             name = core._weapon_name(created)
         except Exception:
@@ -3061,6 +3116,7 @@ def _duplicate_current_weapon() -> None:
         # This native routine spawns and initializes a new WillowWeapon before
         # adding it to the backpack. Passing the live weapon itself to an Add
         # routine moves/retires it and caused the old duplicate-button crash.
+        counter = _backpack_counter(manager)
         manager.ClientAddWeaponToBackpack(
             source.DefinitionData,
             False,
@@ -3071,6 +3127,7 @@ def _duplicate_current_weapon() -> None:
         _pending_duplicate_result = None
         if duplicate is None:
             raise RuntimeError("Enhanced did not expose the spawned backpack weapon")
+        _count_spawned_inventory(manager, counter)
         core._notify(f"Duplicated {core._weapon_name(source)} into the backpack.")
     except Exception as exc:
         _pending_duplicate_source = None
@@ -4199,6 +4256,10 @@ def open_workshop() -> type[Block] | None:
         core._notify("Equip a weapon before opening Pandora's Workshop.")
         return None
     core._session = core.Session(weapon=weapon, original=core._snapshot(weapon))
+    try:
+        _repair_backpack_counter()
+    except Exception as exc:
+        logging.warning(f"Pandora's Workshop skipped the backpack count check: {exc}")
     try:
         core._remember_weapon_parts(weapon)
     except Exception as exc:

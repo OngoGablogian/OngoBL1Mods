@@ -60,6 +60,7 @@ These keyboard shortcuts work while the Workshop is open:
 - Fixed valid weapons and DLC class mods (e.g. the Orion, Specter and Professional) being rejected on import.
 - Fixed the item card being squashed, and sometimes appearing at lower resolution.
 - Fixed the gun model on the item card being stretched.
+- Fixed the vending machine's backpack count going wrong (and below zero) after selling imported or duplicated gear.
 - Renamed "ITEM WORKSHOP - Shields / Grenades / Class Mods" to "Shields / Grenades / Class Mods".
 
 ## Credits

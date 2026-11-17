@@ -86,8 +86,13 @@ jobs:
 
               version = version.lstrip("vV")
               asset = f"{'.'.join(name.split())}.v{version}.zip"
-              with zipfile.ZipFile(out_dir / asset, "w", zipfile.ZIP_DEFLATED) as z:
-                  z.write(sdkmod, arcname=sdkmod.name)
+              # Deterministic zip (fixed timestamp, stored): an unchanged .sdkmod always
+              # produces a byte-identical zip, so unchanged mods are not re-uploaded.
+              info = zipfile.ZipInfo(sdkmod.name, date_time=(1980, 1, 1, 0, 0, 0))
+              info.compress_type = zipfile.ZIP_STORED  # .sdkmod is already compressed
+              info.external_attr = 0o644 << 16
+              with zipfile.ZipFile(out_dir / asset, "w") as z:
+                  z.writestr(info, sdkmod.read_bytes())
 
               mods.append((name, version, asset))
               print(f"Packaged {sdkmod.relative_to(root)} -> dist/{asset}")
@@ -112,23 +117,74 @@ jobs:
           (root / "release-notes.md").write_text(notes, encoding="utf-8")
           print(notes)
 
-      # DELETE OLD RELEASE AND TAG
-      - name: "Delete old release"
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # MOVE THE RELEASE TAG TO THIS COMMIT (the release itself is kept)
+      - name: "Advance release tag to this commit"
         run: |
-          gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-          # In case the tag exists without a release
-          git push origin ":refs/tags/$RELEASE_TAG" || true
+          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$RELEASE_TAG"
 
-      # CREATE NEW RELEASE (marked as Latest) WITH ALL MOD ZIPS
-      - name: "Create new release"
+      # UPDATE (OR CREATE) THE RELEASE
+      # - New/changed zips are uploaded; unchanged zips are left alone so their
+      #   download counts are kept.
+      # - Zips no longer produced (old versions, removed mods) are deleted.
+      - name: "Update release"
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" dist/*.zip \
+          set -euo pipefail
+
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "No existing release; creating it."
+            gh release create "$RELEASE_TAG" dist/*.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "$RELEASE_NAME" \
+              --notes-file release-notes.md \
+              --latest
+            exit 0
+          fi
+
+          # Existing assets: id <TAB> name <TAB> digest <TAB> size
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '.assets[] | [.id, .name, (.digest // ""), .size] | @tsv' > remote-assets.tsv
+
+          # Upload new or changed zips
+          for zip in dist/*.zip; do
+            name=$(basename "$zip")
+            local_digest="sha256:$(sha256sum "$zip" | cut -d' ' -f1)"
+            local_size=$(stat -c %s "$zip")
+            row=$(awk -F'\t' -v n="$name" '$2 == n' remote-assets.tsv)
+
+            if [ -z "$row" ]; then
+              echo "New:       $name"
+              gh release upload "$RELEASE_TAG" "$zip" --repo "$GITHUB_REPOSITORY"
+              continue
+            fi
+
+            remote_digest=$(cut -f3 <<< "$row")
+            remote_size=$(cut -f4 <<< "$row")
+            if { [ -n "$remote_digest" ] && [ "$remote_digest" != "$local_digest" ]; } ||
+               { [ -z "$remote_digest" ] && [ "$remote_size" != "$local_size" ]; }; then
+              echo "Changed:   $name (same version, re-uploading)"
+              gh release upload "$RELEASE_TAG" "$zip" --repo "$GITHUB_REPOSITORY" --clobber
+            else
+              echo "Unchanged: $name"
+            fi
+          done
+
+          # Delete assets that are no longer produced
+          while IFS=$'\t' read -r id name _ _; do
+            if [ ! -f "dist/$name" ]; then
+              echo "Removing:  $name"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id"
+            fi
+          done < remote-assets.tsv
+
+          # Refresh title/notes and make sure it's marked Latest
+          gh release edit "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
             --title "$RELEASE_NAME" \
             --notes-file release-notes.md \
+            --draft=false \
+            --prerelease=false \
             --latest

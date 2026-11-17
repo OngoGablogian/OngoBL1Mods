@@ -28,3 +28,7 @@ See each mod's README for features, options and credits.
 ## License
 
 Each mod is licensed separately; see the `LICENSE` file in its folder.
+
+## Issues
+
+If you run into any bugs or issues with these mods, please feel free to create an issue on the [GitHub page](https://github.com/OngoGablogian/OngoBL1Mods/issues).

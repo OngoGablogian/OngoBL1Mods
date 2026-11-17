@@ -1,0 +1,15 @@
+[project]
+name = "PandorasWorkshop"
+version = "1.1.0"
+authors = [{ name = "Tisrok" }, { name = "Ongo" }]
+description = """Build and edit Borderlands GOTY Enhanced gear in game.
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "Pandora's Workshop"
+license = { name = "MIT", url = "https://opensource.org/license/mit" }
+supported_games = ["BL1E"]
+coop_support = "Unknown"
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Pandora%27s%20Workshop/PandorasWorkshop.sdkmod"
+version = "1.1.0"

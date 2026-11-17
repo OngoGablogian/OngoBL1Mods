@@ -23,6 +23,11 @@ TICK_SECONDS = 1.0
 
 # How often we check whether a shop screen is up, in seconds.
 SHOP_SECONDS = 0.5
+# How often the HUD is asked whether its compass is showing, in seconds. Asking the
+# HUD's Flash screen every frame costs more than it needs to.
+COMPASS_SECONDS = 0.1
+# Where the compass sits on the HUD's Flash screen: the player panel and the bar.
+COMPASS_PATHS = ("_root.p1", "_root.p1.bearing")
 
 # The compass bar, measured as a share of the screen.
 # Enhanced draws its bar lower down than the original does.
@@ -106,6 +111,8 @@ scanned_at = 0.0
 # Whether a shop screen is up, asked now and then rather than every frame.
 shop_open = False
 shop_asked = 0.0
+compass_shown = True
+compass_asked = 0.0
 
 marks: list[tuple[tuple[float, float, float], bool]] = []
 hidden: set[UObject] = set()
@@ -756,6 +763,29 @@ def step_through(pawn, hud, on_screen, hiding, batch: list) -> None:
                 continue
 
 
+def compass_on_screen(pc: UObject) -> bool:
+    """Whether the game is showing its own compass.
+
+    The game takes the compass away for the loading tunnel, cutscenes, bounty boards,
+    and fast travel and New-U stations, among others, so the marks follow it. It
+    hides both the player panel and the bar by making them invisible and fully
+    see-through, which is also how HUD Cleaner hides the compass.
+    """
+    hud = pc.myHUD
+    if hud.bShowHUD is not True or pc.bCinematicMode is True:
+        return False
+
+    movie = getattr(hud, "HUDMovie", None)
+    if movie is None:
+        return True
+    for path in COMPASS_PATHS:
+        if movie.GetVariableBool(f"{path}._visible") is not True:
+            return False
+        if float(movie.GetVariableNumber(f"{path}._alpha")) <= 0.0:
+            return False
+    return True
+
+
 def bearing_to(hx: float, hy: float, facing: float, x: float, y: float) -> float:
     """How far left or right of where you are looking the spot sits, in degrees."""
     angle = math.degrees(math.atan2(y - hy, x - hx))
@@ -770,6 +800,7 @@ def on_render(
     __func: BoundFunction,
 ) -> None:
     global next_tick, gear, black, shop_open, shop_asked, marks, font
+    global compass_shown, compass_asked
 
     pc = get_pc()
     if pc is None or pc.Pawn is None or pc.myHUD is None:
@@ -790,6 +821,16 @@ def on_render(
     # Nothing of ours draws while the menu with the map and skills or the pause screen is up.
     try:
         if pc.bStatusMenuOpen is True or pc.WorldInfo.Pauser is not None:
+            return
+
+        # Nor while the game itself has the compass off the screen.
+        if now - compass_asked >= COMPASS_SECONDS:
+            compass_asked = now
+            try:
+                compass_shown = compass_on_screen(pc)
+            except Exception:
+                compass_shown = True
+        if not compass_shown:
             return
 
         # A shop screen counts too. Asking the game which screen it is playing every

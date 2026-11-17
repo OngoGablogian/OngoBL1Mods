@@ -1,6 +1,6 @@
 [project]
 name = "LootRadar"
-version = "1.4.0"
+version = "1.4.1"
 authors = [{ name = "eeriegoesd" }, { name = "Ongo" }]
 description = """Marks loot, quest items and unopened chests on your compass, with the distance to each one. Modified version of EerieGoesD's Loot Radar, adding quest item marks.
 
@@ -12,4 +12,4 @@ license = {name = "GPL-3.0-or-later", url = "https://www.gnu.org/licenses/gpl-3.
 supported_games = ["BL1", "BL1E"]
 coop_support = "Unknown"
 download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Loot%20Radar/LootRadar.sdkmod"
-version = "1.4.0"
+version = "1.4.1"

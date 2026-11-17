@@ -38,7 +38,7 @@ jobs:
       - name: "Package mods and build release notes"
         shell: python
         run: |
-          import os, sys, tomllib, zipfile
+          import os, re, sys, tomllib, zipfile
           from pathlib import Path
 
           root = Path(".").resolve()
@@ -49,6 +49,14 @@ jobs:
               sdk = data.get("tool", {}).get("sdkmod", {})
               proj = data.get("project", {})
               return sdk.get("name") or proj.get("name"), sdk.get("version") or proj.get("version")
+
+          def asset_base(name: str) -> str:
+              # "Pandora's Workshop" -> "Pandoras.Workshop"
+              # Apostrophes/quotes are dropped; spaces and any other characters
+              # that aren't letters, digits, "-" or "_" become a single dot.
+              name = re.sub(r"[\'\"‘’“”`]", "", name)
+              name = re.sub(r"[^A-Za-z0-9_-]+", ".", name)
+              return name.strip(".")
 
           mods = []
           for sdkmod in sorted(root.rglob("*.sdkmod")):
@@ -85,7 +93,7 @@ jobs:
                   sys.exit(1)
 
               version = version.lstrip("vV")
-              asset = f"{'.'.join(name.split())}.v{version}.zip"
+              asset = f"{asset_base(name)}.v{version}.zip"
               # Deterministic zip (fixed timestamp, stored): an unchanged .sdkmod always
               # produces a byte-identical zip, so unchanged mods are not re-uploaded.
               info = zipfile.ZipInfo(sdkmod.name, date_time=(1980, 1, 1, 0, 0, 0))

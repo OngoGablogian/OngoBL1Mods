@@ -1,0 +1,134 @@
+# Build & publish the "Releases" release
+name: "Release Mods"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.sdkmod"
+  workflow_dispatch:
+
+# Never let two runs delete/recreate the release at the same time
+concurrency:
+  group: release-mods
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: "Releases"
+  RELEASE_NAME: "Ongo's Borderlands 1 Mods"
+
+jobs:
+  release:
+    name: "Release Mods"
+    # Only proceed if this is the official repository (not a fork)
+    if: ${{ github.repository_owner == 'OngoGablogian' }}
+    runs-on: ubuntu-latest
+    steps:
+      # CHECKOUT REPOSITORY
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      # ZIP EACH MOD + WRITE RELEASE NOTES
+      # Name and version come from the pyproject.toml inside each .sdkmod
+      # (falls back to the loose <ModFolder>/<Mod>/pyproject.toml).
+      - name: "Package mods and build release notes"
+        shell: python
+        run: |
+          import os, sys, tomllib, zipfile
+          from pathlib import Path
+
+          root = Path(".").resolve()
+          out_dir = root / "dist"
+          out_dir.mkdir(exist_ok=True)
+
+          def read_meta(data: dict) -> tuple[str | None, str | None]:
+              sdk = data.get("tool", {}).get("sdkmod", {})
+              proj = data.get("project", {})
+              return sdk.get("name") or proj.get("name"), sdk.get("version") or proj.get("version")
+
+          mods = []
+          for sdkmod in sorted(root.rglob("*.sdkmod")):
+              if ".git" in sdkmod.parts or "dist" in sdkmod.parts:
+                  continue
+              stem = sdkmod.stem
+              name = version = None
+
+              # 1) pyproject.toml inside the .sdkmod (it's just a zip)
+              try:
+                  with zipfile.ZipFile(sdkmod) as z:
+                      inner = next((n for n in z.namelist()
+                                    if n.replace("\\", "/").endswith("pyproject.toml")
+                                    and n.replace("\\", "/").count("/") <= 1), None)
+                      if inner:
+                          name, version = read_meta(tomllib.loads(z.read(inner).decode("utf-8")))
+              except (zipfile.BadZipFile, tomllib.TOMLDecodeError) as e:
+                  print(f"::warning file={sdkmod.relative_to(root)}::Could not read pyproject.toml inside .sdkmod: {e}")
+
+              # 2) loose pyproject.toml next to it
+              loose = sdkmod.parent / stem / "pyproject.toml"
+              if loose.is_file():
+                  l_name, l_version = read_meta(tomllib.loads(loose.read_text(encoding="utf-8")))
+                  if version and l_version and version != l_version:
+                      print(f"::warning file={loose.relative_to(root)}::Version mismatch for {stem}: "
+                            f".sdkmod has {version}, loose pyproject.toml has {l_version}. Using {version}.")
+                  name = name or l_name
+                  version = version or l_version
+
+              if not name:
+                  name = stem
+              if not version:
+                  print(f"::error file={sdkmod.relative_to(root)}::No version found for {stem}")
+                  sys.exit(1)
+
+              version = version.lstrip("vV")
+              asset = f"{'.'.join(name.split())}.v{version}.zip"
+              with zipfile.ZipFile(out_dir / asset, "w", zipfile.ZIP_DEFLATED) as z:
+                  z.write(sdkmod, arcname=sdkmod.name)
+
+              mods.append((name, version, asset))
+              print(f"Packaged {sdkmod.relative_to(root)} -> dist/{asset}")
+
+          if not mods:
+              print("::error::No .sdkmod files found")
+              sys.exit(1)
+
+          mods.sort(key=lambda m: m[0].casefold())
+          mod_lines = "\n".join(f"- {n} [v{v}]" for n, v, _ in mods)
+
+          notes = f"""## Mods
+
+          {mod_lines}
+
+          ## Installation
+
+          1. Download the zipped `.sdkmod` files from the releases page.
+          2. Extract the `.sdkmod` files , and copy them into your `sdk_mods` folder, inside your Borderlands install's `Binaries` folder.
+          3. Start the game, open **Mods** from the main menu (or pause menu) and enable the mods.
+          """
+          (root / "release-notes.md").write_text(notes, encoding="utf-8")
+          print(notes)
+
+      # DELETE OLD RELEASE AND TAG
+      - name: "Delete old release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          # In case the tag exists without a release
+          git push origin ":refs/tags/$RELEASE_TAG" || true
+
+      # CREATE NEW RELEASE (marked as Latest) WITH ALL MOD ZIPS
+      - name: "Create new release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_NAME" \
+            --notes-file release-notes.md \
+            --latest

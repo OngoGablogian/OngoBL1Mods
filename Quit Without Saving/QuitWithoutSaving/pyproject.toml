@@ -1,0 +1,14 @@
+[project]
+name = "QuitWithoutSaving"
+version = "1.0.0"
+authors = [{ name = "Ongo" }, { name = "Pyrex" }]
+description = """Adds a keybind to quit to the main menu without saving, and an option to remove Quit to Desktop from the pause menu. Split out from Pyrex's mod "Bonk Utilities".
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "Quit Without Saving"
+license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Quit%20Without%20Saving/QuitWithoutSaving.sdkmod"
+version = "1.0.0"

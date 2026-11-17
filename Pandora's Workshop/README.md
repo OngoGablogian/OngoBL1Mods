@@ -59,6 +59,7 @@ These keyboard shortcuts work while the Workshop is open:
 - Importing now creates a new weapon or item in the backpack instead of overwriting the selected one, and accepts WillowTree gear codes.
 - Fixed valid weapons and DLC class mods (e.g. the Orion, Specter and Professional) being rejected on import.
 - Fixed the item card being squashed, and sometimes appearing at lower resolution.
+- Fixed the gun model on the item card being stretched.
 - Renamed "ITEM WORKSHOP - Shields / Grenades / Class Mods" to "Shields / Grenades / Class Mods".
 
 ## Credits

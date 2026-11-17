@@ -96,7 +96,7 @@ _card_startup_ticks = 0
 _card_modal_hidden = False
 
 
-WORKSHOP_VERSION = "1.1.0"
+WORKSHOP_VERSION = "1.1.1"
 CARD_PREVIEW_ENABLED = True
 DEBUG_LOGGING = False
 _part_change_busy = False
@@ -3511,6 +3511,185 @@ def _refresh_workshop_card() -> None:
         logging.error(f"Pandora's Workshop could not refresh the HUD item card: {exc}")
 
 
+# Shape of the card's weapon-image slot, read from the card's Flash file.
+# Scaleform stretches the bound thumbnail to fit this slot, so the
+# thumbnail must be rendered at the same width/height ratio.
+_card_weapon_slot: tuple[int, int] | None = None
+_card_weapon_slot_checked = False
+DEFAULT_THUMBNAIL_SIZE = (512, 256)
+
+
+class _Bits:
+    """Big-endian bit reader for SWF RECT/MATRIX records."""
+
+    def __init__(self, data: bytes, pos: int) -> None:
+        self.data, self.bit = data, pos * 8
+
+    def unsigned(self, count: int) -> int:
+        value = 0
+        for _ in range(count):
+            byte = self.data[self.bit >> 3]
+            value = (value << 1) | ((byte >> (7 - (self.bit & 7))) & 1)
+            self.bit += 1
+        return value
+
+    def signed(self, count: int) -> int:
+        value = self.unsigned(count)
+        return value - (1 << count) if count and value & (1 << (count - 1)) else value
+
+    def align(self) -> int:
+        self.bit = (self.bit + 7) & ~7
+        return self.bit >> 3
+
+
+def _read_rect(data: bytes, pos: int) -> tuple[tuple[int, ...], int]:
+    """SWF RECT -> ((xmin, xmax, ymin, ymax) in twips, next byte position)."""
+    bits = _Bits(data, pos)
+    nbits = bits.unsigned(5)
+    rect = tuple(bits.signed(nbits) for _ in range(4))
+    return rect, bits.align()
+
+
+def _skip_matrix(data: bytes, pos: int) -> int:
+    bits = _Bits(data, pos)
+    for _ in range(2):  # optional scale, optional rotate/skew
+        if bits.unsigned(1):
+            n = bits.unsigned(5)
+            bits.unsigned(n)
+            bits.unsigned(n)
+    n = bits.unsigned(5)  # translate
+    bits.unsigned(n)
+    bits.unsigned(n)
+    return bits.align()
+
+
+def _shape_bitmap_fills(body: bytes, tag: int, code: int) -> tuple[tuple[int, int], list[int]]:
+    """(width, height) in twips of a DefineShape* tag, and the bitmap ids it fills with."""
+    import struct
+    rect, pos = _read_rect(body, tag + 2)
+    size = (rect[1] - rect[0], rect[3] - rect[2])
+    if code == 83:  # DefineShape4: edge bounds + flags byte
+        _edges, pos = _read_rect(body, pos)
+        pos += 1
+    count = body[pos]
+    pos += 1
+    if count == 0xFF and code != 2:
+        count = struct.unpack_from("<H", body, pos)[0]
+        pos += 2
+    color = 4 if code in (32, 83) else 3
+    bitmap_ids = []
+    for _ in range(count):
+        kind = body[pos]
+        pos += 1
+        if kind == 0x00:
+            pos += color
+        elif kind in (0x10, 0x12, 0x13):
+            pos = _skip_matrix(body, pos)
+            stops = body[pos] & 0x0F
+            pos += 1 + stops * (1 + color)
+            if kind == 0x13:
+                pos += 2
+        elif 0x40 <= kind <= 0x43:
+            bitmap_ids.append(struct.unpack_from("<H", body, pos)[0])
+            pos = _skip_matrix(body, pos + 2)
+        else:
+            break
+    return size, bitmap_ids
+
+
+def _swf_image_slot(raw: bytes, wanted: str) -> tuple[tuple[int, int] | None, str]:
+    """Displayed (width, height) of the image named `wanted`, and how it was found.
+
+    Scaleform external images (tags 1001/1009) carry their display size. An
+    exported placeholder bitmap is displayed through the shape it fills, so
+    that shape's bounds are the slot size; the bitmap's own pixel size is not.
+    """
+    import struct
+    signature = raw[:3]
+    if signature in (b"CWS", b"CFX"):
+        body = zlib.decompress(raw[8:])
+    elif signature in (b"FWS", b"GFX"):
+        body = raw[8:]
+    else:
+        return None, "unknown file signature"
+    _frame, pos = _read_rect(body, 0)
+    pos += 4  # frame rate, frame count
+    wanted = wanted.lower()
+    external: dict[str, tuple[int, int]] = {}
+    exported: dict[str, int] = {}
+    shapes: list[tuple[tuple[int, int], list[int]]] = []
+
+    def text(at: int) -> str:
+        return body[at + 1:at + 1 + body[at]].decode("latin-1")
+
+    while pos + 2 <= len(body):
+        header = struct.unpack_from("<H", body, pos)[0]
+        pos += 2
+        code, length = header >> 6, header & 0x3F
+        if length == 0x3F:
+            length = struct.unpack_from("<I", body, pos)[0]
+            pos += 4
+        tag = pos
+        pos += length
+        if code == 0:
+            break
+        try:
+            if code == 1001:
+                _cid, _fmt, width, height = struct.unpack_from("<HHHH", body, tag)
+                external[text(tag + 8).lower()] = (width, height)
+            elif code == 1009:
+                _cid, _fmt, width, height = struct.unpack_from("<IHHH", body, tag)
+                external[text(tag + 10).lower()] = (width, height)
+            elif code == 56:  # ExportAssets
+                count = struct.unpack_from("<H", body, tag)[0]
+                at = tag + 2
+                for _ in range(count):
+                    cid = struct.unpack_from("<H", body, at)[0]
+                    end = body.index(b"\0", at + 2)
+                    exported[body[at + 2:end].decode("latin-1").lower()] = cid
+                    at = end + 1
+            elif code in (2, 22, 32, 83):
+                shapes.append(_shape_bitmap_fills(body, tag, code))
+        except Exception:
+            continue
+    if wanted in external and min(external[wanted]) >= 16:
+        return external[wanted], "external image"
+    cid = exported.get(wanted)
+    if cid is None:
+        return None, f"no image named {wanted}"
+    for size, bitmap_ids in shapes:
+        if cid in bitmap_ids and size[0] > 0 and size[1] > 0:
+            return size, "shape filled with the placeholder"
+    return None, f"no shape uses {wanted}"
+
+
+def _thumbnail_size(movie: UObject) -> tuple[int, int]:
+    """Thumbnail size with the same shape as the card's weapon-image slot."""
+    global _card_weapon_slot, _card_weapon_slot_checked
+    if not _card_weapon_slot_checked:
+        _card_weapon_slot_checked = True
+        wanted = str(getattr(movie, "WeapTexName", "") or "")
+        try:
+            raw = bytes(int(value) & 0xFF for value in movie.MovieInfo.RawData)
+            size, how = _swf_image_slot(raw, wanted)
+            aspect = size[0] / size[1] if size else 0.0
+            # A square or near-square result is a placeholder, not the slot.
+            if size is not None and 1.2 <= aspect <= 5.0:
+                _card_weapon_slot = size
+                logging.info(
+                    f"Pandora's Workshop card weapon slot '{wanted}': {size[0]}x{size[1]} ({how}), aspect {aspect:.2f}"
+                )
+            else:
+                found = f"{size[0]}x{size[1]} ({how})" if size else how
+                logging.info(f"Pandora's Workshop card weapon slot '{wanted}' not usable: {found}; keeping 512x256")
+        except Exception as exc:
+            logging.info(f"Pandora's Workshop could not read the card's weapon slot ({exc}); keeping 512x256")
+    if _card_weapon_slot is None:
+        return DEFAULT_THUMBNAIL_SIZE
+    width, height = _card_weapon_slot
+    return 512, max(64, min(512, int(round(512 * height / width))))
+
+
 def _refresh_workshop_thumbnail(inventory: UObject) -> None:
     """Render an inventory-style mesh copy into the Flash image resource."""
     global _workshop_card_mesh, _workshop_thumbnail, _workshop_thumbnail_manager
@@ -3528,7 +3707,8 @@ def _refresh_workshop_thumbnail(inventory: UObject) -> None:
     if _workshop_thumbnail is None:
         # Thumbnail_Update (1) refreshes after SetThumbnailMesh, matching the
         # inventory pipeline without continuously rendering a static weapon.
-        _workshop_thumbnail = manager.GetThumbnail(512, 256, 1, 512, 256)
+        thumb_w, thumb_h = _thumbnail_size(movie)
+        _workshop_thumbnail = manager.GetThumbnail(thumb_w, thumb_h, 1, thumb_w, thumb_h)
     previous_mesh, previous_flags = _workshop_card_mesh, _workshop_mesh_original_flags
     _workshop_mesh_original_flags = int(mesh.ObjectFlags)
     mesh.ObjectFlags |= ObjectFlags.KEEP_ALIVE

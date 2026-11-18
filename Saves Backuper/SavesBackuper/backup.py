@@ -34,6 +34,7 @@ __all__: tuple[str, ...] = (
     "BackupResult",
     "list_backups",
     "make_backup",
+    "wait_until_stable",
 )
 
 BACKUP_PREFIX = "SaveData_"
@@ -121,6 +122,49 @@ def _fingerprint(files: list[_SaveFile]) -> str:
         h.update(len(f.data).to_bytes(8, "little"))
         h.update(hashlib.sha256(f.data).digest())
     return h.hexdigest()
+
+
+def _snapshot(save_dir: Path) -> tuple[tuple[str, int, int], ...] | None:
+    """Names, sizes and modified times of everything in the save folder, without reading contents."""
+    entries: list[tuple[str, int, int]] = []
+    try:
+        for root, _, filenames in os.walk(save_dir):
+            for name in filenames:
+                st = os.stat(os.path.join(root, name))
+                entries.append((os.path.join(root, name), st.st_size, st.st_mtime_ns))
+    except OSError:
+        return None
+    return tuple(sorted(entries))
+
+
+def wait_until_stable(
+    save_dir: Path,
+    *,
+    quiet: float = 2.0,
+    timeout: float = 30.0,
+    poll: float = 0.25,
+) -> bool:
+    """
+    Waits until nothing in the save folder has changed for `quiet` seconds, so a backup isn't taken
+    while the game is still writing a save. Blocks, so only call it off the game thread.
+
+    Returns:
+        True if the folder settled, False if it was still changing when `timeout` ran out.
+    """
+    start = time.monotonic()
+    last = _snapshot(save_dir)
+    last_change = start
+    while True:
+        now = time.monotonic()
+        if now - last_change >= quiet:
+            return True
+        if now - start >= timeout:
+            return False
+        time.sleep(poll)
+        current = _snapshot(save_dir)
+        if current != last:
+            last = current
+            last_change = time.monotonic()
 
 
 def _sort_key(path: Path) -> tuple[str, int]:

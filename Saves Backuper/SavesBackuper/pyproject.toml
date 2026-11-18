@@ -1,6 +1,6 @@
 [project]
 name = "SavesBackuper"
-version = "1.0.0"
+version = "1.0.1"
 authors = [{ name = "Ongo" }, { name = "plu5" }]
 description = """Automatically backs up your save files to zip files each time you launch the game. Ported from plu5's Borderlands 2 mod "Saves Backuper".
 
@@ -11,4 +11,4 @@ name = "Saves Backuper"
 license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
 supported_games = ["BL1", "BL1E"]
 download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Saves%20Backuper/SavesBackuper.sdkmod"
-version = "1.0.0"
+version = "1.0.1"

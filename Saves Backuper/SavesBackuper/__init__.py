@@ -1,6 +1,8 @@
 import ctypes
 import os
+import threading
 from pathlib import Path
+from typing import Any
 
 from mods_base import (
     BoolOption,
@@ -10,10 +12,18 @@ from mods_base import (
     NestedOption,
     SliderOption,
     build_mod,
+    hook,
 )
 from unrealsdk import logging
+from unrealsdk.hooks import Type
 
-from .backup import BackupError, BackupResult, list_backups, make_backup
+from .backup import (
+    BackupError,
+    BackupResult,
+    list_backups,
+    make_backup,
+    wait_until_stable,
+)
 
 try:
     from ui_utils import TrainingBox, clipboard_paste
@@ -125,16 +135,21 @@ def describe_result(result: BackupResult) -> str:
     return msg
 
 
-def run_backup(show_dialog: bool) -> None:
+# Stops two backups (e.g. a quit-to-menu backup and Back Up Now) from running at the same time
+_backup_lock = threading.Lock()
+
+
+def run_backup(show_dialog: bool, only_if_changed: bool = False) -> None:
     save_dir = get_save_dir()
     backup_dir = get_backup_dir()
     try:
-        result = make_backup(
-            save_dir,
-            backup_dir,
-            skip_unchanged=skip_unchanged.value,
-            keep=int(keep_count.value) if delete_old.value else None,
-        )
+        with _backup_lock:
+            result = make_backup(
+                save_dir,
+                backup_dir,
+                skip_unchanged=only_if_changed or skip_unchanged.value,
+                keep=int(keep_count.value) if delete_old.value else None,
+            )
     except BackupError as ex:
         if show_dialog:
             show_message("Backup Failed", str(ex))
@@ -272,6 +287,17 @@ backup_on_launch = BoolOption(
     ),
 )
 
+backup_on_quit = BoolOption(
+    "Back Up On Quit To Main Menu",
+    True,
+    "Yes",
+    "No",
+    description=(
+        "When you quit to the main menu, back up your saves if they've changed since the last"
+        " backup. Waits for the game to finish saving first."
+    ),
+)
+
 skip_unchanged = BoolOption(
     "Skip If Unchanged",
     True,
@@ -345,7 +371,43 @@ folders = NestedOption(
 )
 
 
+# Quitting to the main menu always goes through the pause menu, so the main menu opening after the
+# pause menu has been used means the player just quit. This skips the main menu that opens when the
+# game first starts (that's covered by Back Up On Game Launch).
+_quit_pending: bool = False
+
+
+@hook("WillowGame.WillowGFxMenuPause:extInitMain", Type.POST)
+def on_pause_menu_opened(*_: Any) -> None:
+    global _quit_pending
+    _quit_pending = True
+
+
+def _quit_backup_worker() -> None:
+    try:
+        if not wait_until_stable(get_save_dir()):
+            logging.warning(
+                f"[{MOD_NAME}] Saves were still changing after 30 seconds, backing up anyway.",
+            )
+        run_backup(show_dialog=False, only_if_changed=True)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[{MOD_NAME}] Quit backup failed: {type(ex).__name__}: {ex}")
+
+
+@hook("WillowGame.WillowGFxMenuFrontend:extOpenInitialScreen", Type.POST)
+def on_main_menu_opened(*_: Any) -> None:
+    global _quit_pending
+    if not _quit_pending:
+        return
+    _quit_pending = False
+    if backup_on_quit.value:
+        # Runs in the background so waiting for the game to finish saving doesn't freeze the menu
+        threading.Thread(target=_quit_backup_worker, name="SavesBackuper", daemon=True).start()
+
+
 def on_enable() -> None:
+    global _quit_pending
+    _quit_pending = False
     # When the mod was left enabled, this runs while the game is starting up
     if backup_on_launch.value:
         run_backup(show_dialog=False)
@@ -356,6 +418,7 @@ build_mod(
         backup_now,
         open_backup_folder,
         backup_on_launch,
+        backup_on_quit,
         skip_unchanged,
         delete_old,
         keep_count,

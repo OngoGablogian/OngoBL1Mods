@@ -1,0 +1,14 @@
+[project]
+name = "UnspecSkills"
+version = "1.0.0"
+authors = [{ name = "Ongo" }]
+description = """Allows you to freely respec your skill points right from the Skills menu without having to purchase a full respec at a New-U station. Ported from ZetaDaemon's Borderlands 2 mod "Unspec Skills".
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "Unspec Skills"
+license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Unspec%20Skills/UnspecSkills.sdkmod"
+version = "1.0.0"

@@ -1,6 +1,8 @@
+import copy
 import ctypes
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +17,8 @@ from mods_base import (
     hook,
 )
 from unrealsdk import logging
-from unrealsdk.hooks import Type
+from unrealsdk.hooks import Block, Type, prevent_hooking_direct_calls
+from unrealsdk.unreal import BoundFunction, UObject, WeakPointer, WrappedStruct
 
 from .backup import (
     BackupError,
@@ -394,15 +397,101 @@ def _quit_backup_worker() -> None:
         logging.error(f"[{MOD_NAME}] Quit backup failed: {type(ex).__name__}: {ex}")
 
 
+_quit_backup_thread: threading.Thread | None = None
+
+
+def is_quit_backup_running() -> bool:
+    return _quit_backup_thread is not None and _quit_backup_thread.is_alive()
+
+
 @hook("WillowGame.WillowGFxMenuFrontend:extOpenInitialScreen", Type.POST)
 def on_main_menu_opened(*_: Any) -> None:
-    global _quit_pending
+    global _quit_pending, _quit_backup_thread
     if not _quit_pending:
         return
     _quit_pending = False
-    if backup_on_quit.value:
+    if backup_on_quit.value and not is_quit_backup_running():
         # Runs in the background so waiting for the game to finish saving doesn't freeze the menu
-        threading.Thread(target=_quit_backup_worker, name="SavesBackuper", daemon=True).start()
+        _quit_backup_thread = threading.Thread(
+            target=_quit_backup_worker,
+            name="SavesBackuper",
+            daemon=True,
+        )
+        _quit_backup_thread.start()
+
+
+# ---------------------------------------------------------------------------------------------------
+# Holding the main menu's Quit until a quit-to-menu backup has finished
+# ---------------------------------------------------------------------------------------------------
+
+# If the backup somehow never finishes, let the game quit anyway after this long
+MAX_QUIT_DELAY = 45.0
+
+# The main menu's Quit entry is always its last item. Its tag is read when the menu is built rather
+# than hard-coded, so it's right in both GOTY and GOTY Enhanced.
+_main_menu_quit_tag: str | None = None
+
+# The held Quit selection: the menu it was made on, a copy of its args, and when it was pressed
+_held_quit: tuple[WeakPointer, WrappedStruct, float] | None = None
+
+
+@hook("WillowGame.WillowGFxMenuScreenDynamicText:Init", Type.POST)
+def on_menu_screen_init(obj: UObject, *_: Any) -> None:
+    global _main_menu_quit_tag
+    try:
+        if obj.MenuTag == "Main" and len(obj.Items) > 0:
+            _main_menu_quit_tag = str(obj.Items[-1].Tag)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _is_quit_tag(tag: str) -> bool:
+    return tag == _main_menu_quit_tag or "quit" in tag.lower()
+
+
+@hook("WillowGame.WillowGFxMenuFrontend:HandleMainMenu")
+def on_main_menu_selection(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> type[Block] | None:
+    global _held_quit
+    if not _is_quit_tag(str(args.ItemTag)):
+        return None
+    if _held_quit is not None:
+        # Already waiting, ignore repeat presses
+        return Block
+    if not is_quit_backup_running():
+        return None
+
+    logging.info(f"[{MOD_NAME}] Waiting for the save backup to finish before quitting...")
+    _held_quit = (WeakPointer(obj), copy.copy(args), time.monotonic())
+    release_held_quit_when_done.enable()
+    return Block
+
+
+@hook("WillowGame.WillowUIInteraction:TickImp")
+def release_held_quit_when_done(*_: Any) -> None:
+    global _held_quit
+    if _held_quit is None:
+        release_held_quit_when_done.disable()
+        return
+
+    weak_menu, held_args, pressed_at = _held_quit
+    if is_quit_backup_running() and time.monotonic() - pressed_at < MAX_QUIT_DELAY:
+        return
+
+    release_held_quit_when_done.disable()
+    _held_quit = None
+    if is_quit_backup_running():
+        logging.warning(f"[{MOD_NAME}] Backup still running after {MAX_QUIT_DELAY:.0f}s, quitting.")
+
+    if (menu := weak_menu()) is None:
+        return
+    # Replay the original Quit selection, exactly as the game made it
+    with prevent_hooking_direct_calls():
+        menu.HandleMainMenu(held_args)
 
 
 def on_enable() -> None:
@@ -411,6 +500,12 @@ def on_enable() -> None:
     # When the mod was left enabled, this runs while the game is starting up
     if backup_on_launch.value:
         run_backup(show_dialog=False)
+
+
+def on_disable() -> None:
+    global _held_quit
+    release_held_quit_when_done.disable()
+    _held_quit = None
 
 
 build_mod(
@@ -426,5 +521,13 @@ build_mod(
         custom_save_dir,
         custom_backup_dir,
     ],
+    # Listed explicitly so the per-frame hook stays off until a quit is actually being held
+    hooks=[
+        on_pause_menu_opened,
+        on_main_menu_opened,
+        on_menu_screen_init,
+        on_main_menu_selection,
+    ],
     on_enable=on_enable,
+    on_disable=on_disable,
 )

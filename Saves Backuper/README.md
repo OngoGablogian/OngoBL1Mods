@@ -8,7 +8,7 @@ This is a port of plu5's Borderlands 2 mod [Saves Backuper](https://github.com/p
 
 ### Backups
 - Each time you launch the game, your whole save folder is zipped into a timestamped backup, such as `SaveData_2026-11-17_21-30-05.zip`. This happens before any character is loaded or saved.
-- Each time you quit to the main menu, your saves are backed up again if they've changed since the last backup. The mod waits for the game to finish saving first.
+- Each time you quit to the main menu, your saves are backed up again if they've changed since the last backup. The mod waits for the game to finish saving first. If you press Quit on the main menu while this backup is still running, the game waits a few seconds for it to finish before quitting.
 - Your save files are only ever read, never changed. Each backup is checked against your saves before it's kept.
 - **Back Up Now**: makes a backup straight away.
 - **Open Backup Folder**: opens the backup folder in File Explorer.

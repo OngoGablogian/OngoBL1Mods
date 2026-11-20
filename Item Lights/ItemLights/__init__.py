@@ -8,11 +8,15 @@
 # light is built and attached to it, coloured by the item's rarity. Shadows are turned off on the
 # light, since they don't render properly on it and cost a lot of performance.
 #
+# Quest items are picked out the same way as in Loot Radar. Ones the game is still hiding because
+# their mission isn't active are checked about once a second and lit as soon as they appear.
+#
 # Borderlands 1 doesn't have every function the Borderlands 2 version relies on, so the rarity
 # colour and the attachment each try a few ways in turn. The first light made each session writes
 # a line to unrealsdk.log saying which ways worked.
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import unrealsdk
@@ -28,6 +32,10 @@ MOD_NAME = "Item Lights"
 
 # How far above the pickup the light sits.
 LIGHT_HEIGHT = 15
+
+# How often hidden quest items are checked to see whether their mission has made them appear, in
+# seconds.
+QUEST_CHECK_SECONDS = 1.0
 
 # Every class that counts as "weapons and gear". Checked against the whole class hierarchy, so
 # subclasses count too. Borderlands 1 calls class mods "command decks" internally.
@@ -61,6 +69,18 @@ weapons_gear_only = BoolOption(
     "On",
     "Off",
     description="With this enabled, only weapons and gear will have lights. Otherwise every item will have a light.",
+    on_change_while_enabled=on_option_change,
+)
+
+quest_items = BoolOption(
+    "Light Quest Items",
+    True,
+    "On",
+    "Off",
+    description=(
+        "With this enabled, items you need for a mission always have lights, even with Weapons and Gear Only on."
+        " Ones that only appear during their mission get a light once they show up."
+    ),
     on_change_while_enabled=on_option_change,
 )
 
@@ -199,6 +219,42 @@ def get_rarity_color(pickup: UObject) -> WrappedStruct:
 # Every light this mod has made, with the pickup it sits on, so they can be taken off again.
 _lights: list[tuple[WeakPointer, WeakPointer]] = []
 
+# Quest items the game is still keeping hidden, waiting for their mission to show them.
+_waiting: list[WeakPointer] = []
+_next_quest_check = 0.0
+
+
+def is_quest_item(pickup: UObject) -> bool:
+    """Whether the pickup holds a mission item rather than ordinary loot.
+
+    Mission items share their class with health and ammo, so it's their definition that tells them
+    apart: the game flags it with bMissionItem and presents it as a MissionObject. A few DLC ones
+    lack the flag but keep the presentation, and all of them live in a mission package such as
+    Z0_MissionData.ItemDefs.
+    """
+    try:
+        definition = pickup.Inventory.DefinitionData.ItemDefinition
+    except Exception:
+        return False
+    if definition is None:
+        return False
+
+    try:
+        if definition.bMissionItem is True:
+            return True
+    except Exception:
+        pass
+
+    try:
+        if "missionobject" in str(definition.Presentation).lower():
+            return True
+    except Exception:
+        pass
+
+    path = str(definition).lower()
+    package = path.split("'", 1)[-1].split(".", 1)[0]
+    return "mission" in package and ".itemdefs." in path
+
 
 def is_gear(pickup: UObject) -> bool:
     try:
@@ -269,12 +325,23 @@ def add_light(pickup: UObject, overrides: dict | None = None) -> None:
     except Exception:
         return
 
-    if not is_enabled(pickup):
-        return
     if has_light(pickup):
         return
-    if setting(weapons_gear_only, overrides) and not is_gear(pickup):
-        return
+
+    if is_quest_item(pickup):
+        if not setting(quest_items, overrides):
+            return
+        if not is_enabled(pickup):
+            # Hidden until its mission is active. A light now would give its spot away, so it's
+            # checked again every so often and lit once it appears.
+            if not any(ptr() == pickup for ptr in _waiting):
+                _waiting.append(WeakPointer(pickup))
+            return
+    else:
+        if not is_enabled(pickup):
+            return
+        if setting(weapons_gear_only, overrides) and not is_gear(pickup):
+            return
 
     try:
         light = unrealsdk.construct_object("PointLightComponent", pickup)
@@ -320,6 +387,26 @@ def remove_all() -> None:
             except Exception:
                 continue
     _lights.clear()
+    _waiting.clear()
+
+
+def check_waiting() -> None:
+    """Lights any hidden quest items that their mission has now shown."""
+    still_waiting = []
+    for ptr in _waiting:
+        pickup = ptr()
+        if pickup is None:
+            continue
+        try:
+            if pickup.bDeleteMe is True or pickup.Inventory is None:
+                continue
+        except Exception:
+            continue
+        if is_enabled(pickup):
+            add_light(pickup)
+        else:
+            still_waiting.append(ptr)
+    _waiting[:] = still_waiting
 
 
 def all_pickups() -> list[UObject]:
@@ -359,6 +446,18 @@ def on_spawn_particles(obj: UObject, _2: WrappedStruct, _3: Any, _4: BoundFuncti
     add_light(obj)
 
 
+@hook("Engine.GameViewportClient:PostRender", Type.POST)
+def on_render(_1: UObject, _2: WrappedStruct, _3: Any, _4: BoundFunction) -> None:
+    global _next_quest_check
+    if not _waiting:
+        return
+    now = time.monotonic()
+    if now < _next_quest_check:
+        return
+    _next_quest_check = now + QUEST_CHECK_SECONDS
+    check_waiting()
+
+
 def on_enable() -> None:
     # Loot already lying around when the mod is turned on gets lit straight away.
     light_all()
@@ -369,8 +468,8 @@ def on_disable() -> None:
 
 
 mod = build_mod(
-    options=[weapons_gear_only, brightness, radius, falloff],
-    hooks=[on_spawn_particles],
+    options=[weapons_gear_only, quest_items, brightness, radius, falloff],
+    hooks=[on_spawn_particles, on_render],
     on_enable=on_enable,
     on_disable=on_disable,
 )

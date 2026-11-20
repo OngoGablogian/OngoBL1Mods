@@ -12,6 +12,7 @@ This is a port of RedxYeti's Borderlands 2 mod [Item Lights](https://github.com/
 - Changing an option updates the lights on loot that's already on the ground.
 - The lights don't cast shadows, which keeps them cheap on performance.
 - **Weapons and Gear Only**: only weapons, shields, grenade mods, class mods and artifacts get lights (off by default).
+- **Light Quest Items**: items you need for a mission always get lights, even with Weapons and Gear Only on. Quest items that only appear during their mission get a light once they show up (on by default).
 - **Light Brightness**: how bright the lights are (1–15, default 5).
 - **Light Radius**: how far the light reaches (10–1024, default 300).
 - **Light Falloff**: how the brightness fades toward the edge of the light. Lower values carry the brightness out to the edge, giving it a sharper edge (1–80, default 40).

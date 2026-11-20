@@ -1,6 +1,6 @@
 [project]
 name = "ItemLights"
-version = "1.0.0"
+version = "1.0.1"
 authors = [{ name = "Ongo" }]
 description = """Adds a light to items lying on the ground, colored by their rarity. Ported from RedxYeti's Borderlands 2 mod "Item Lights".
 
@@ -11,4 +11,4 @@ name = "Item Lights"
 license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
 supported_games = ["BL1", "BL1E"]
 download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Item%20Lights/ItemLights.sdkmod"
-version = "1.0.0"
+version = "1.0.1"

@@ -36,6 +36,7 @@ This is a modified version of EerieGoesD's [Loot Radar](https://github.com/Eerie
 - **Show Distance**: how far away each mark is, written above it (on by default).
 - **Units**: Metres or Feet (default Metres).
 - **Checks per second**: how often loot and chests around you are looked for (0.1–10, default 1). Lower is better for performance.
+- Marks only show while the game's compass is on screen. They are hidden during loading screens, cutscenes, menus, bounty boards and fast travel/New-U stations, and when the compass is hidden with HUD Cleaner.
 
 ## Requirements
 
@@ -50,4 +51,4 @@ This is a modified version of EerieGoesD's [Loot Radar](https://github.com/Eerie
 4. Choose **Loot Radar** and make sure it's enabled.
 
 ## Credits
-- **EerieGoesD** for the original [Loot Radar](https://github.com/EerieGoesD/borderlands-1-goty-mods/tree/main/LootRadar). All features apart from the quest item marks are EerieGoesD's work. If you'd like to support the original author, you can [buy EerieGoesD a coffee](https://buymeacoffee.com/eeriegoesd).
+- **EerieGoesD** for the original [Loot Radar](https://github.com/EerieGoesD/borderlands-1-goty-mods/tree/main/LootRadar). All features apart from the quest item marks and the compass fix are EerieGoesD's work. If you'd like to support the original author, you can [buy EerieGoesD a coffee](https://buymeacoffee.com/eeriegoesd).

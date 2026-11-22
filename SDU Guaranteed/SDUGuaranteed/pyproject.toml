@@ -1,0 +1,14 @@
+[project]
+name = "SDUGuaranteed"
+version = "1.1.0"
+authors = [{ name = "Ongo" }]
+description = """Makes Backpack SDU mission rewards guaranteed on every playthrough, including DLC Claptraps. Updated version of Miner Of Worlds' (MOW531) "SDU Guaranteed".
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "SDU Guaranteed"
+license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/SDU%20Guaranteed/SDUGuaranteed.sdkmod"
+version = "1.1.0"

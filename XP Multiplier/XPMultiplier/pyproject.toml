@@ -1,0 +1,14 @@
+[project]
+name = "XPMultiplier"
+version = "1.0.0"
+authors = [{ name = "Ongo" }]
+description = """Multiplies the XP your character earns and the XP your weapon proficiencies earn, each with its own slider.
+
+https://github.com/OngoGablogian/OngoBL1Mods"""
+
+[tool.sdkmod]
+name = "XP Multiplier"
+license = { name = "GPL3", url = "https://choosealicense.com/licenses/gpl-3.0/" }
+supported_games = ["BL1", "BL1E"]
+download = "https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/XP%20Multiplier/XPMultiplier.sdkmod"
+version = "1.0.0"

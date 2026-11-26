@@ -17,6 +17,7 @@ A collection of **Borderlands GOTY / GOTY Enhanced** mods for the [willow1-mod-m
 | [Sell Looked At Item](Sell%20Looked%20At%20Item/README.md) | Keybind to sell the item you're looking at on the ground without picking it up. Extracted from Pyrex's *Bonk Utilities*. | GOTY, GOTY Enhanced | [SellLookedAtItem.sdkmod](https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Sell%20Looked%20At%20Item/SellLookedAtItem.sdkmod) |
 | [Unspec Skills](Unspec%20Skills/README.md) | Take points back out of skills for free, right from the Skills menu, without a full respec. Ported from ZetaDaemon's *Unspec Skills*. | GOTY, GOTY Enhanced | [UnspecSkills.sdkmod](https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Unspec%20Skills/UnspecSkills.sdkmod) |
 | [Weapon Volume BL1E](Weapon%20Volume/README.md) | Separate volume sliders for each weapon type, plus grenades. | GOTY Enhanced only | [WeaponVolumeBL1E.sdkmod](https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/Weapon%20Volume/WeaponVolumeBL1E.sdkmod) |
+| [XP Multiplier](XP%20Multiplier/README.md) | Separate multipliers for character XP (kills and, optionally, missions) and weapon proficiency XP, from 1x to 50x. | GOTY, GOTY Enhanced | [XPMultiplier.sdkmod](https://github.com/OngoGablogian/OngoBL1Mods/raw/refs/heads/main/XP%20Multiplier/XPMultiplier.sdkmod) |
 
 See each mod's README for features, options and credits.
 
